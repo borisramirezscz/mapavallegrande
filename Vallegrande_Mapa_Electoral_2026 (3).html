@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Mapa Electoral — Vallegrande 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg:#0b0d12; --panel:#13161e; --panel2:#181c27; --border:#1e2333;
+  --accent:#f0c040; --red:#e05252; --orange:#e07c3a; --green:#4caf7d;
+  --blue:#4a90d9; --purple:#9b6dd9; --text:#c8d0e0; --muted:#4e566e; --white:#edf2ff;
+  --radius:8px; --shadow:0 4px 24px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);font-family:'IBM Plex Sans',sans-serif;color:var(--text);overflow:hidden}
+
+/* ── SEARCH OVERLAY (Google style) ── */
+#search-overlay{
+  position:fixed;top:0;left:0;right:0;z-index:3000;
+  padding:10px 12px;
+  background:linear-gradient(to bottom,rgba(11,13,18,.98) 80%,transparent);
+  pointer-events:none;
+}
+#search-box{
+  pointer-events:all;
+  display:flex;align-items:center;gap:10px;
+  background:var(--panel);
+  border:1.5px solid var(--border);
+  border-radius:28px;
+  padding:0 16px;
+  height:48px;
+  box-shadow:var(--shadow);
+  transition:border-color .2s,box-shadow .2s;
+  max-width:680px;
+  margin:0 auto;
+  position:relative;
+}
+#search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,192,64,.12),var(--shadow)}
+#search-icon{color:var(--muted);font-size:16px;flex-shrink:0}
+#search-input{
+  flex:1;background:none;border:none;outline:none;
+  font-family:'IBM Plex Sans',sans-serif;font-size:14px;color:var(--white);
+  min-width:0;
+}
+#search-input::placeholder{color:var(--muted)}
+#search-clear{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px;display:none;flex-shrink:0}
+#search-clear:hover{color:var(--white)}
+
+/* results dropdown */
+#search-results{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;
+  box-shadow:var(--shadow);display:none;max-height:60vh;overflow-y:auto;
+  z-index:100;
+}
+.sr-item{
+  display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;
+  border-bottom:1px solid var(--border);transition:background .15s;
+}
+.sr-item:last-child{border-bottom:none}
+.sr-item:hover,.sr-item.focused{background:rgba(240,192,64,.08)}
+.sr-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.sr-info{flex:1;min-width:0}
+.sr-name{font-size:13px;font-weight:600;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr-sub{font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:1px}
+.sr-hab{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--accent);flex-shrink:0}
+.sr-empty{padding:16px;text-align:center;font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace}
+
+/* stats pills below search */
+#stats-row{
+  pointer-events:all;
+  display:flex;gap:6px;justify-content:center;flex-wrap:wrap;
+  margin-top:8px;padding:0 4px;
+}
+.s-pill{
+  background:rgba(19,22,30,.9);border:1px solid var(--border);border-radius:20px;
+  padding:3px 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  display:flex;align-items:center;gap:5px;color:var(--muted);white-space:nowrap;
+}
+.s-pill strong{color:var(--white);font-size:11px}
+
+/* MAP */
+#map{position:fixed;inset:0;z-index:1}
+
+/* ── BOTTOM SHEET (mobile detail) ── */
+#bottom-sheet{
+  position:fixed;bottom:0;left:0;right:0;z-index:2000;
+  background:var(--panel);
+  border-top:1px solid var(--border);
+  border-radius:16px 16px 0 0;
+  transform:translateY(100%);
+  transition:transform .32s cubic-bezier(.4,0,.2,1);
+  max-height:88vh;display:flex;flex-direction:column;
+  box-shadow:0 -8px 40px rgba(0,0,0,.6);
+}
+#bottom-sheet.open{transform:translateY(0)}
+
+#sheet-handle{
+  display:flex;justify-content:center;padding:10px 0 4px;flex-shrink:0;cursor:pointer;
+}
+#sheet-handle::before{content:'';width:36px;height:4px;background:var(--border);border-radius:2px}
+#sheet-header{
+  padding:4px 16px 12px;display:flex;align-items:flex-start;gap:10px;flex-shrink:0;
+  border-bottom:1px solid var(--border);
+}
+#sheet-color{width:12px;height:12px;border-radius:50%;margin-top:5px;flex-shrink:0}
+#sheet-title-wrap{flex:1;min-width:0}
+#sheet-title{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent);letter-spacing:1px;line-height:1.1}
+#sheet-sub{font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:2px}
+#sheet-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:2px;flex-shrink:0}
+#sheet-close:hover{color:var(--white)}
+
+#sheet-body{overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}
+#sheet-body::-webkit-scrollbar{width:3px}
+#sheet-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── DESKTOP SIDE PANEL ── */
+#side-panel{
+  position:fixed;right:0;top:0;bottom:0;width:360px;z-index:1500;
+  background:var(--panel);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;
+  transform:translateX(100%);
+  transition:transform .3s cubic-bezier(.4,0,.2,1);
+  box-shadow:-4px 0 24px rgba(0,0,0,.4);
+}
+#side-panel.open{transform:translateX(0)}
+#sp-header{padding:16px;border-bottom:1px solid var(--border);flex-shrink:0}
+#sp-close{float:right;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer}
+#sp-close:hover{color:var(--white)}
+#sp-title{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:1px;margin-top:4px;line-height:1.1}
+#sp-sub{font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;margin-top:3px}
+#sp-body{overflow-y:auto;flex:1}
+#sp-body::-webkit-scrollbar{width:3px}
+#sp-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── SHARED CONTENT STYLES ── */
+.sec{padding:14px 16px;border-bottom:1px solid var(--border)}
+.sec-title{font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px}
+
+.kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.kv{background:var(--bg);border-radius:6px;padding:8px 10px}
+.kv-k{font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.kv-v{font-size:16px;font-weight:700;color:var(--white);margin-top:1px;font-family:'IBM Plex Mono',monospace}
+.kv-v.gold{color:var(--accent)}
+.kv-v.purple{color:var(--purple)}
+
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.badge{font-size:9px;font-family:'IBM Plex Mono',monospace;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.3px;text-transform:uppercase;border:1px solid}
+
+/* Historical tabs */
+.tab-row{display:flex;gap:0;background:var(--bg);border-radius:6px;padding:2px;margin-bottom:12px}
+.tab{flex:1;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;padding:5px 4px;border-radius:4px;cursor:pointer;color:var(--muted);letter-spacing:.3px;transition:all .2s;border:none;background:none}
+.tab.active{background:var(--panel2);color:var(--white)}
+
+.hist-panel{display:none}
+.hist-panel.active{display:block}
+
+/* Party bar */
+.party-row{margin-bottom:8px}
+.party-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.party-name{font-size:11px;font-weight:600;color:var(--white)}
+.party-votes{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
+.bar-track{height:7px;background:var(--bg);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s ease}
+
+.stat-row{display:flex;justify-content:space-between;font-size:10px;font-family:'IBM Plex Mono',monospace;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
+.stat-row span{color:var(--text)}
+
+/* Age bars */
+.age-wrap{display:flex;flex-direction:column;gap:6px}
+.age-row-d{display:flex;align-items:center;gap:8px}
+.age-lbl{width:52px;font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--muted);text-align:right;flex-shrink:0}
+.age-bar-outer{flex:1;background:var(--bg);border-radius:3px;height:16px;overflow:hidden;position:relative}
+.age-bar-inner{height:100%;border-radius:3px;display:flex;align-items:center;padding:0 6px;font-size:9px;font-weight:700;color:rgba(255,255,255,.8)}
+.age-num{width:28px;text-align:right;font-size:10px;font-family:'IBM Plex Mono',monospace;color:var(--text);flex-shrink:0}
+
+/* GPS button */
+.gps-btn{
+  display:flex;align-items:center;gap:8px;width:100%;
+  background:rgba(240,192,64,.1);border:1px solid rgba(240,192,64,.3);
+  color:var(--accent);border-radius:6px;padding:10px 14px;cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.5px;
+  transition:all .2s;text-decoration:none;
+}
+.gps-btn:hover{background:rgba(240,192,64,.18)}
+
+/* Legend pill on map */
+#legend{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  background:rgba(19,22,30,.92);border:1px solid var(--border);border-radius:20px;
+  padding:6px 14px;z-index:900;display:flex;gap:14px;align-items:center;
+  backdrop-filter:blur(8px);
+  font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);
+}
+.leg-item{display:flex;align-items:center;gap:5px}
+.leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* FILTER BAR */
+#filter-bar{
+  position:fixed;top:76px;left:0;right:0;z-index:890;
+  display:flex;gap:6px;padding:0 12px;overflow-x:auto;
+  scrollbar-width:none;pointer-events:none;
+}
+#filter-bar::-webkit-scrollbar{display:none}
+.fb-wrap{pointer-events:all;display:flex;gap:6px}
+.fbt{
+  background:rgba(19,22,30,.88);border:1px solid var(--border);border-radius:20px;
+  padding:4px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);
+  cursor:pointer;white-space:nowrap;transition:all .2s;backdrop-filter:blur(4px);
+  flex-shrink:0;
+}
+.fbt.on{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:700}
+
+/* Leaflet */
+.leaflet-popup-content-wrapper{background:var(--panel)!important;border:1px solid var(--border)!important;border-radius:8px!important;box-shadow:var(--shadow)!important;color:var(--text)!important;font-family:'IBM Plex Sans',sans-serif!important}
+.leaflet-popup-tip{background:var(--panel)!important}
+.leaflet-popup-content{margin:10px 14px!important;font-size:12px!important}
+.leaflet-popup-close-button{color:var(--muted)!important;font-size:16px!important}
+.leaflet-tooltip{background:var(--panel)!important;border:1px solid var(--border)!important;color:var(--white)!important;font-family:'IBM Plex Mono',monospace!important;font-size:11px!important;padding:4px 10px!important;border-radius:20px!important;box-shadow:none!important}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--border)!important}
+
+/* ── RESPONSIVE ── */
+@media(min-width:700px){
+  #bottom-sheet{display:none}
+  #search-overlay{max-width:420px;left:0;right:auto;padding:12px}
+  #stats-row{justify-content:flex-start}
+  #filter-bar{left:0;right:auto;max-width:420px}
+  #legend{left:auto;right:380px;transform:none;bottom:20px}
+}
+@media(max-width:699px){
+  #side-panel{display:none}
+  #legend{bottom:80px}
+  #filter-bar{top:72px}
+}
+</style>
+</head>
+<body>
+
+<!-- SEARCH OVERLAY -->
+<div id="search-overlay">
+  <div id="search-box">
+    <span id="search-icon">🔍</span>
+    <input id="search-input" type="text" placeholder="Buscar recinto, asiento, ideología…" autocomplete="off" spellcheck="false">
+    <button id="search-clear">✕</button>
+    <div id="search-results"></div>
+  </div>
+  <div id="stats-row">
+    <div class="s-pill">📍 <strong>27</strong> recintos</div>
+    <div class="s-pill">🗳️ <strong>65</strong> mesas</div>
+    <div class="s-pill">👥 <strong>11,857</strong> hab.</div>
+    <div class="s-pill">🧑‍💼 <strong>9</strong> candidatos</div>
+  </div>
+</div>
+
+<!-- FILTER BAR -->
+<div id="filter-bar">
+  <div class="fb-wrap">
+    <button class="fbt on" data-f="all">Todos</button>
+    <button class="fbt" data-f="ALTA">🔴 Alta</button>
+    <button class="fbt" data-f="MEDIA">🟠 Media</button>
+    <button class="fbt" data-f="BAJA">🟢 Baja</button>
+    <button class="fbt" data-f="CONSERVADOR">Conserv.</button>
+    <button class="fbt" data-f="DERECHA">Derecha</button>
+    <button class="fbt" data-f="CENTRO">Centro</button>
+    <button class="fbt" data-f="EXTREMA IZQUIERDA">Ext. Izq.</button>
+  </div>
+</div>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- LEGEND -->
+<div id="legend">
+  <div class="leg-item"><div class="leg-dot" style="background:#e05252"></div>Alta</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#e07c3a"></div>Media</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#4caf7d"></div>Baja</div>
+  <span style="border-left:1px solid var(--border);height:12px;margin:0 2px"></span>
+  <span>⊙ tamaño = hab.</span>
+</div>
+
+<!-- MOBILE BOTTOM SHEET -->
+<div id="bottom-sheet">
+  <div id="sheet-handle" onclick="closeDetail()"></div>
+  <div id="sheet-header">
+    <div id="sheet-color"></div>
+    <div id="sheet-title-wrap">
+      <div id="sheet-title">—</div>
+      <div id="sheet-sub">—</div>
+    </div>
+    <button id="sheet-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div id="sheet-body"></div>
+</div>
+
+<!-- DESKTOP SIDE PANEL -->
+<div id="side-panel">
+  <div id="sp-header">
+    <button id="sp-close" onclick="closeDetail()">✕</button>
+    <div style="font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--muted);letter-spacing:1px">DETALLE DE RECINTO</div>
+    <div id="sp-title">—</div>
+    <div id="sp-sub">—</div>
+  </div>
+  <div id="sp-body"></div>
+</div>
+
+<script>
+const DATA = [{"recinto": "Esc. Obispo Manuel Jose Peña", "asiento": "Vallegrande", "mesas": 10, "hab": 2294, "pct_total": 19.35, "lat": -18.48844, "lng": -64.10788, "prioridad": "ALTA", "ideologia": "DERECHA", "distrito": "DISTRITO 101", "zona": "Zona 5422", "libre1v": 641, "unidad1v": 612, "pdc1v": 268, "mas1v": 35, "apb1v": 272, "valido1v": 1907, "emitido1v": 2110, "gan1v": "LIBRE", "pct1v": 33.6, "part1v": 90.1, "pdc2v": 533, "libre2v": 1453, "valido2v": 1986, "emitido2v": 2082, "gan2v": "LIBRE", "pct2v": 73.2, "part2v": 88.9, "creemos20": 776, "cc20": 627, "mas20": 430, "valido20": 1866, "emitido20": 2083, "gan20": "CREEMOS", "pct20": 41.6, "part20": 86.5, "perfil": "ADULTO", "sondeo": 43, "joven": 666, "adulto": 868, "mayor": 765, "pjoven": 29.0, "padulto": 37.8, "pmayor": 33.3}, {"recinto": "U.E. Fagima Eid de Villagómez", "asiento": "Vallegrande", "mesas": 10, "hab": 2182, "pct_total": 18.4, "lat": -18.48645, "lng": -64.1055, "prioridad": "ALTA", "ideologia": "CENTRO", "distrito": "DISTRITO 101", "zona": "Zona 5422", "libre1v": 527, "unidad1v": 544, "pdc1v": 282, "mas1v": 42, "apb1v": 329, "valido1v": 1803, "emitido1v": 2060, "gan1v": "UNIDAD", "pct1v": 30.2, "part1v": 89.4, "pdc2v": 635, "libre2v": 1275, "valido2v": 1910, "emitido2v": 2020, "gan2v": "LIBRE", "pct2v": 66.8, "part2v": 87.6, "creemos20": 765, "cc20": 688, "mas20": 566, "valido20": 2055, "emitido20": 2337, "gan20": "CREEMOS", "pct20": 37.2, "part20": 86.5, "perfil": "ADULTO", "sondeo": 40, "joven": 495, "adulto": 902, "mayor": 789, "pjoven": 22.6, "padulto": 41.3, "pmayor": 36.1}, {"recinto": "Kinder Santa Maria", "asiento": "Vallegrande", "mesas": 8, "hab": 1911, "pct_total": 16.12, "lat": -18.48618, "lng": -64.1016, "prioridad": "ALTA", "ideologia": "CENTRO", "distrito": "DISTRITO 101", "zona": "Zona 5422", "libre1v": 512, "unidad1v": 525, "pdc1v": 251, "mas1v": 32, "apb1v": 243, "valido1v": 1609, "emitido1v": 1851, "gan1v": "UNIDAD", "pct1v": 32.6, "part1v": 89.3, "pdc2v": 540, "libre2v": 1222, "valido2v": 1762, "emitido2v": 1822, "gan2v": "LIBRE", "pct2v": 69.3, "part2v": 87.9, "creemos20": 770, "cc20": 569, "mas20": 426, "valido20": 1790, "emitido20": 1964, "gan20": "CREEMOS", "pct20": 43.0, "part20": 86.4, "perfil": "ADULTO", "sondeo": 35, "joven": 527, "adulto": 765, "mayor": 628, "pjoven": 27.4, "padulto": 39.8, "pmayor": 32.7}, {"recinto": "U.E. Juana Carmen Román", "asiento": "Vallegrande", "mesas": 8, "hab": 1739, "pct_total": 14.67, "lat": -18.4887, "lng": -64.10676, "prioridad": "ALTA", "ideologia": "DERECHA", "distrito": "DISTRITO 101", "zona": "Zona 5422", "libre1v": 0, "unidad1v": 0, "pdc1v": 0, "mas1v": 0, "apb1v": 0, "valido1v": 0, "emitido1v": 0, "gan1v": "LIBRE", "pct1v": 0.0, "part1v": 0.0, "pdc2v": 0, "libre2v": 0, "valido2v": 0, "emitido2v": 0, "gan2v": "PDC", "pct2v": 0.0, "part2v": 0.0, "creemos20": 0, "cc20": 0, "mas20": 0, "valido20": 0, "emitido20": 0, "gan20": "CREEMOS", "pct20": 0.0, "part20": 0.0, "perfil": "ADULTO", "sondeo": 32, "joven": 458, "adulto": 683, "mayor": 598, "pjoven": 26.3, "padulto": 39.3, "pmayor": 34.4}, {"recinto": "U.E Isabel Villegas Mariscal", "asiento": "Vallegrande", "mesas": 4, "hab": 765, "pct_total": 6.45, "lat": -18.48589, "lng": -64.1038, "prioridad": "ALTA", "ideologia": "DERECHA", "distrito": "DISTRITO 101", "zona": "Zona 5422", "libre1v": 0, "unidad1v": 0, "pdc1v": 0, "mas1v": 0, "apb1v": 0, "valido1v": 0, "emitido1v": 0, "gan1v": "LIBRE", "pct1v": 0.0, "part1v": 0.0, "pdc2v": 0, "libre2v": 0, "valido2v": 0, "emitido2v": 0, "gan2v": "PDC", "pct2v": 0.0, "part2v": 0.0, "creemos20": 0, "cc20": 0, "mas20": 0, "valido20": 0, "emitido20": 0, "gan20": "CREEMOS", "pct20": 0.0, "part20": 0.0, "perfil": "JOVEN", "sondeo": 14, "joven": 523, "adulto": 177, "mayor": 67, "pjoven": 68.2, "padulto": 23.1, "pmayor": 8.7}, {"recinto": "Esc. Central Guadalupe", "asiento": "Guadalupe", "mesas": 2, "hab": 490, "pct_total": 4.13, "lat": -18.55554, "lng": -64.08943, "prioridad": "MEDIA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 108", "zona": "Zona 5423", "libre1v": 135, "unidad1v": 87, "pdc1v": 65, "mas1v": 1, "apb1v": 99, "valido1v": 411, "emitido1v": 469, "gan1v": "LIBRE", "pct1v": 32.9, "part1v": 92.0, "pdc2v": 161, "libre2v": 279, "valido2v": 440, "emitido2v": 460, "gan2v": "LIBRE", "pct2v": 63.4, "part2v": 90.2, "creemos20": 107, "cc20": 138, "mas20": 123, "valido20": 374, "emitido20": 412, "gan20": "CC", "pct20": 36.9, "part20": 90.0, "perfil": "MAYOR", "sondeo": 9, "joven": 94, "adulto": 170, "mayor": 226, "pjoven": 19.2, "padulto": 34.7, "pmayor": 46.1}, {"recinto": "Esc. Alto Seco", "asiento": "Alto Seco", "mesas": 2, "hab": 271, "pct_total": 2.29, "lat": -18.87071, "lng": -64.0739, "prioridad": "MEDIA", "ideologia": "EXTREMA IZQUIERDA", "distrito": "DISTRITO 115", "zona": "Zona 5425", "libre1v": 28, "unidad1v": 26, "pdc1v": 22, "mas1v": 4, "apb1v": 96, "valido1v": 193, "emitido1v": 261, "gan1v": "APB-SUMATÉ", "pct1v": 49.7, "part1v": 87.3, "pdc2v": 109, "libre2v": 108, "valido2v": 217, "emitido2v": 246, "gan2v": "PDC", "pct2v": 50.2, "part2v": 82.3, "creemos20": 38, "cc20": 63, "mas20": 92, "valido20": 202, "emitido20": 274, "gan20": "MAS-IPSP", "pct20": 45.5, "part20": 87.0, "perfil": "MAYOR", "sondeo": 5, "joven": 33, "adulto": 94, "mayor": 144, "pjoven": 12.2, "padulto": 34.7, "pmayor": 53.1}, {"recinto": "U.E. Juan Manuel Santillan", "asiento": "Vallegrande", "mesas": 2, "hab": 264, "pct_total": 2.23, "lat": -18.48942, "lng": -64.10594, "prioridad": "MEDIA", "ideologia": "DERECHA", "distrito": "DISTRITO 101", "zona": "Zona 5422", "libre1v": 64, "unidad1v": 40, "pdc1v": 42, "mas1v": 5, "apb1v": 29, "valido1v": 190, "emitido1v": 209, "gan1v": "LIBRE", "pct1v": 33.7, "part1v": 87.1, "pdc2v": 70, "libre2v": 129, "valido2v": 199, "emitido2v": 208, "gan2v": "LIBRE", "pct2v": 64.8, "part2v": 86.7, "creemos20": 0, "cc20": 0, "mas20": 0, "valido20": 0, "emitido20": 0, "gan20": "CREEMOS", "pct20": 0.0, "part20": 0.0, "perfil": "JOVEN", "sondeo": 5, "joven": 149, "adulto": 66, "mayor": 52, "pjoven": 55.8, "padulto": 24.7, "pmayor": 19.5}, {"recinto": "Esc. Santa Rosita", "asiento": "Santa Rosita", "mesas": 1, "hab": 228, "pct_total": 1.92, "lat": -18.52326, "lng": -64.08921, "prioridad": "MEDIA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 108", "zona": "Zona 5423", "libre1v": 68, "unidad1v": 52, "pdc1v": 21, "mas1v": 8, "apb1v": 25, "valido1v": 186, "emitido1v": 209, "gan1v": "LIBRE", "pct1v": 36.6, "part1v": 91.3, "pdc2v": 69, "libre2v": 131, "valido2v": 200, "emitido2v": 205, "gan2v": "LIBRE", "pct2v": 65.5, "part2v": 89.5, "creemos20": 30, "cc20": 59, "mas20": 41, "valido20": 134, "emitido20": 148, "gan20": "CC", "pct20": 44.0, "part20": 85.5, "perfil": "ADULTO", "sondeo": 5, "joven": 50, "adulto": 90, "mayor": 88, "pjoven": 21.9, "padulto": 39.5, "pmayor": 38.6}, {"recinto": "Esc. Masicuri", "asiento": "Masicurí", "mesas": 1, "hab": 191, "pct_total": 1.61, "lat": -18.83035, "lng": -63.7827, "prioridad": "BAJA", "ideologia": "CENTRO", "distrito": "DISTRITO 114", "zona": "Zona 5426", "libre1v": 32, "unidad1v": 53, "pdc1v": 11, "mas1v": 4, "apb1v": 37, "valido1v": 148, "emitido1v": 182, "gan1v": "UNIDAD", "pct1v": 35.8, "part1v": 89.2, "pdc2v": 61, "libre2v": 96, "valido2v": 157, "emitido2v": 172, "gan2v": "LIBRE", "pct2v": 61.1, "part2v": 84.3, "creemos20": 35, "cc20": 47, "mas20": 32, "valido20": 120, "emitido20": 168, "gan20": "CC", "pct20": 39.2, "part20": 90.8, "perfil": "MAYOR", "sondeo": 5, "joven": 23, "adulto": 81, "mayor": 87, "pjoven": 12.0, "padulto": 42.4, "pmayor": 45.5}, {"recinto": "Esc. de Chacopata", "asiento": "Chacopata", "mesas": 1, "hab": 166, "pct_total": 1.4, "lat": -18.35738, "lng": -64.22845, "prioridad": "BAJA", "ideologia": "CENTRO", "distrito": "DISTRITO 103", "zona": "Zona 5435", "libre1v": 28, "unidad1v": 36, "pdc1v": 17, "mas1v": 0, "apb1v": 39, "valido1v": 133, "emitido1v": 167, "gan1v": "APB-SUMATÉ", "pct1v": 29.3, "part1v": 90.8, "pdc2v": 45, "libre2v": 98, "valido2v": 143, "emitido2v": 158, "gan2v": "LIBRE", "pct2v": 68.5, "part2v": 85.9, "creemos20": 32, "cc20": 41, "mas20": 47, "valido20": 125, "emitido20": 160, "gan20": "MAS-IPSP", "pct20": 37.6, "part20": 89.4, "perfil": "MAYOR", "sondeo": 5, "joven": 35, "adulto": 57, "mayor": 74, "pjoven": 21.1, "padulto": 34.3, "pmayor": 44.6}, {"recinto": "Esc. Unidad Educativa Arenales", "asiento": "Arenales", "mesas": 1, "hab": 148, "pct_total": 1.25, "lat": -18.95773, "lng": -63.72046, "prioridad": "BAJA", "ideologia": "CENTRO", "distrito": "DISTRITO 114", "zona": "Zona 5426", "libre1v": 23, "unidad1v": 52, "pdc1v": 25, "mas1v": 2, "apb1v": 13, "valido1v": 125, "emitido1v": 137, "gan1v": "UNIDAD", "pct1v": 41.6, "part1v": 89.0, "pdc2v": 40, "libre2v": 86, "valido2v": 126, "emitido2v": 130, "gan2v": "LIBRE", "pct2v": 68.2, "part2v": 84.4, "creemos20": 19, "cc20": 74, "mas20": 23, "valido20": 118, "emitido20": 135, "gan20": "CC", "pct20": 62.7, "part20": 94.4, "perfil": "ADULTO", "sondeo": 5, "joven": 33, "adulto": 64, "mayor": 51, "pjoven": 22.3, "padulto": 43.2, "pmayor": 34.5}, {"recinto": "Esc. Nucleo San Juan", "asiento": "San Juan del Chaco", "mesas": 1, "hab": 141, "pct_total": 1.19, "lat": -18.33736, "lng": -64.20335, "prioridad": "BAJA", "ideologia": "DERECHA", "distrito": "DISTRITO 103", "zona": "Zona 5435", "libre1v": 49, "unidad1v": 29, "pdc1v": 6, "mas1v": 0, "apb1v": 17, "valido1v": 121, "emitido1v": 138, "gan1v": "LIBRE", "pct1v": 40.5, "part1v": 90.8, "pdc2v": 38, "libre2v": 96, "valido2v": 134, "emitido2v": 140, "gan2v": "LIBRE", "pct2v": 71.6, "part2v": 92.1, "creemos20": 38, "cc20": 44, "mas20": 47, "valido20": 131, "emitido20": 144, "gan20": "MAS-IPSP", "pct20": 35.9, "part20": 85.2, "perfil": "MAYOR", "sondeo": 5, "joven": 24, "adulto": 40, "mayor": 77, "pjoven": 17.0, "padulto": 28.4, "pmayor": 54.6}, {"recinto": "U.E. Chujllas", "asiento": "Chujllas", "mesas": 1, "hab": 114, "pct_total": 0.96, "lat": -18.82724, "lng": -64.01951, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 111", "zona": "Zona 5428", "libre1v": 11, "unidad1v": 33, "pdc1v": 5, "mas1v": 1, "apb1v": 34, "valido1v": 93, "emitido1v": 101, "gan1v": "APB-SUMATÉ", "pct1v": 36.6, "part1v": 92.7, "pdc2v": 28, "libre2v": 67, "valido2v": 95, "emitido2v": 101, "gan2v": "LIBRE", "pct2v": 70.5, "part2v": 92.7, "creemos20": 19, "cc20": 28, "mas20": 12, "valido20": 63, "emitido20": 82, "gan20": "CC", "pct20": 44.4, "part20": 91.1, "perfil": "MAYOR", "sondeo": 5, "joven": 11, "adulto": 37, "mayor": 66, "pjoven": 9.6, "padulto": 32.5, "pmayor": 57.9}, {"recinto": "Esc. Casamontes", "asiento": "Casamonte", "mesas": 1, "hab": 105, "pct_total": 0.89, "lat": -18.7043, "lng": -64.02952, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 110", "zona": "Zona 5429", "libre1v": 13, "unidad1v": 25, "pdc1v": 9, "mas1v": 1, "apb1v": 28, "valido1v": 80, "emitido1v": 96, "gan1v": "APB-SUMATÉ", "pct1v": 35.0, "part1v": 84.2, "pdc2v": 36, "libre2v": 56, "valido2v": 92, "emitido2v": 100, "gan2v": "LIBRE", "pct2v": 60.9, "part2v": 87.7, "creemos20": 18, "cc20": 32, "mas20": 23, "valido20": 79, "emitido20": 112, "gan20": "CC", "pct20": 40.5, "part20": 84.8, "perfil": "MAYOR", "sondeo": 5, "joven": 14, "adulto": 33, "mayor": 58, "pjoven": 13.3, "padulto": 31.4, "pmayor": 55.2}, {"recinto": "U.E. Manchones", "asiento": "Manchones", "mesas": 1, "hab": 95, "pct_total": 0.8, "lat": -18.7644, "lng": -63.98546, "prioridad": "BAJA", "ideologia": "DERECHA", "distrito": "DISTRITO 111", "zona": "Zona 5428", "libre1v": 10, "unidad1v": 22, "pdc1v": 7, "mas1v": 0, "apb1v": 35, "valido1v": 80, "emitido1v": 89, "gan1v": "APB-SUMATÉ", "pct1v": 43.8, "part1v": 89.9, "pdc2v": 28, "libre2v": 48, "valido2v": 76, "emitido2v": 83, "gan2v": "LIBRE", "pct2v": 63.2, "part2v": 83.8, "creemos20": 0, "cc20": 0, "mas20": 0, "valido20": 0, "emitido20": 0, "gan20": "CREEMOS", "pct20": 0.0, "part20": 0.0, "perfil": "ADULTO", "sondeo": 5, "joven": 19, "adulto": 41, "mayor": 35, "pjoven": 20.0, "padulto": 43.2, "pmayor": 36.8}, {"recinto": "Esc. Loma Larga", "asiento": "Loma Larga", "mesas": 1, "hab": 93, "pct_total": 0.78, "lat": -18.76341, "lng": -63.90147, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 113", "zona": "Zona 5427", "libre1v": 22, "unidad1v": 13, "pdc1v": 7, "mas1v": 0, "apb1v": 24, "valido1v": 73, "emitido1v": 78, "gan1v": "APB-SUMATÉ", "pct1v": 32.9, "part1v": 84.8, "pdc2v": 22, "libre2v": 52, "valido2v": 74, "emitido2v": 77, "gan2v": "LIBRE", "pct2v": 70.3, "part2v": 83.7, "creemos20": 21, "cc20": 39, "mas20": 9, "valido20": 73, "emitido20": 90, "gan20": "CC", "pct20": 53.4, "part20": 92.8, "perfil": "MAYOR", "sondeo": 5, "joven": 12, "adulto": 35, "mayor": 46, "pjoven": 12.9, "padulto": 37.6, "pmayor": 49.5}, {"recinto": "Esc. Nucleo El Bello", "asiento": "El Bello", "mesas": 1, "hab": 89, "pct_total": 0.75, "lat": -18.4416, "lng": -64.1921, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 104", "zona": "Zona 5421", "libre1v": 34, "unidad1v": 20, "pdc1v": 5, "mas1v": 1, "apb1v": 18, "valido1v": 81, "emitido1v": 87, "gan1v": "LIBRE", "pct1v": 42.0, "part1v": 87.9, "pdc2v": 16, "libre2v": 68, "valido2v": 84, "emitido2v": 86, "gan2v": "LIBRE", "pct2v": 81.0, "part2v": 86.9, "creemos20": 33, "cc20": 39, "mas20": 11, "valido20": 85, "emitido20": 98, "gan20": "CC", "pct20": 45.9, "part20": 89.1, "perfil": "MAYOR", "sondeo": 5, "joven": 16, "adulto": 30, "mayor": 43, "pjoven": 18.0, "padulto": 33.7, "pmayor": 48.3}, {"recinto": "Esc. Santa Ana", "asiento": "Santa Ana (Vallegrande)", "mesas": 1, "hab": 86, "pct_total": 0.73, "lat": -18.59265, "lng": -64.14568, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 107", "zona": "Zona 5432", "libre1v": 26, "unidad1v": 20, "pdc1v": 5, "mas1v": 0, "apb1v": 20, "valido1v": 76, "emitido1v": 86, "gan1v": "LIBRE", "pct1v": 34.2, "part1v": 91.5, "pdc2v": 20, "libre2v": 60, "valido2v": 80, "emitido2v": 85, "gan2v": "LIBRE", "pct2v": 75.0, "part2v": 90.4, "creemos20": 28, "cc20": 31, "mas20": 20, "valido20": 80, "emitido20": 97, "gan20": "CC", "pct20": 38.8, "part20": 88.2, "perfil": "MAYOR", "sondeo": 5, "joven": 5, "adulto": 30, "mayor": 51, "pjoven": 5.8, "padulto": 34.9, "pmayor": 59.3}, {"recinto": "Esc. Piraimiri", "asiento": "Piraimirí", "mesas": 1, "hab": 80, "pct_total": 0.67, "lat": -18.63727, "lng": -63.96642, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 108", "zona": "Zona 5423", "libre1v": 7, "unidad1v": 10, "pdc1v": 8, "mas1v": 0, "apb1v": 30, "valido1v": 58, "emitido1v": 73, "gan1v": "APB-SUMATÉ", "pct1v": 51.7, "part1v": 85.9, "pdc2v": 16, "libre2v": 43, "valido2v": 59, "emitido2v": 71, "gan2v": "LIBRE", "pct2v": 72.9, "part2v": 83.5, "creemos20": 8, "cc20": 20, "mas20": 18, "valido20": 46, "emitido20": 71, "gan20": "CC", "pct20": 43.5, "part20": 88.8, "perfil": "MAYOR", "sondeo": 5, "joven": 9, "adulto": 27, "mayor": 44, "pjoven": 11.2, "padulto": 33.8, "pmayor": 55.0}, {"recinto": "Esc. Naranjo", "asiento": "Naranjo", "mesas": 1, "hab": 74, "pct_total": 0.62, "lat": -18.42672, "lng": -64.25041, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 105", "zona": "Zona 5434", "libre1v": 21, "unidad1v": 9, "pdc1v": 5, "mas1v": 1, "apb1v": 21, "valido1v": 61, "emitido1v": 67, "gan1v": "LIBRE", "pct1v": 34.4, "part1v": 90.5, "pdc2v": 18, "libre2v": 44, "valido2v": 62, "emitido2v": 68, "gan2v": "LIBRE", "pct2v": 71.0, "part2v": 91.9, "creemos20": 7, "cc20": 33, "mas20": 8, "valido20": 51, "emitido20": 74, "gan20": "CC", "pct20": 64.7, "part20": 90.2, "perfil": "MAYOR", "sondeo": 5, "joven": 10, "adulto": 23, "mayor": 41, "pjoven": 13.5, "padulto": 31.1, "pmayor": 55.4}, {"recinto": "Esc. Los Sitanos", "asiento": "Sitanos", "mesas": 1, "hab": 73, "pct_total": 0.62, "lat": -18.86124, "lng": -63.95912, "prioridad": "BAJA", "ideologia": "CENTRO", "distrito": "DISTRITO 111", "zona": "Zona 5428", "libre1v": 18, "unidad1v": 25, "pdc1v": 0, "mas1v": 0, "apb1v": 18, "valido1v": 63, "emitido1v": 70, "gan1v": "UNIDAD", "pct1v": 39.7, "part1v": 87.5, "pdc2v": 8, "libre2v": 58, "valido2v": 66, "emitido2v": 70, "gan2v": "LIBRE", "pct2v": 87.9, "part2v": 87.5, "creemos20": 20, "cc20": 24, "mas20": 7, "valido20": 54, "emitido20": 74, "gan20": "CC", "pct20": 44.4, "part20": 86.0, "perfil": "MAYOR", "sondeo": 5, "joven": 6, "adulto": 26, "mayor": 41, "pjoven": 8.2, "padulto": 35.6, "pmayor": 56.2}, {"recinto": "Esc. De Mankaillpa", "asiento": "Mankaillpa", "mesas": 1, "hab": 67, "pct_total": 0.57, "lat": -18.39356, "lng": -64.21599, "prioridad": "BAJA", "ideologia": "DERECHA", "distrito": "DISTRITO 102", "zona": "Zona 5424", "libre1v": 12, "unidad1v": 8, "pdc1v": 10, "mas1v": 2, "apb1v": 13, "valido1v": 49, "emitido1v": 59, "gan1v": "APB-SUMATÉ", "pct1v": 26.5, "part1v": 85.5, "pdc2v": 20, "libre2v": 38, "valido2v": 58, "emitido2v": 61, "gan2v": "LIBRE", "pct2v": 65.5, "part2v": 88.4, "creemos20": 27, "cc20": 13, "mas20": 9, "valido20": 51, "emitido20": 64, "gan20": "CREEMOS", "pct20": 52.9, "part20": 94.1, "perfil": "MAYOR", "sondeo": 5, "joven": 11, "adulto": 22, "mayor": 34, "pjoven": 16.4, "padulto": 32.8, "pmayor": 50.7}, {"recinto": "CEA Centro de educacion alternativa Raquel Rojas Cabrera", "asiento": "Vallegrande", "mesas": 1, "hab": 63, "pct_total": 0.53, "lat": -18.48804, "lng": -64.10823, "prioridad": "BAJA", "ideologia": "DERECHA", "distrito": "DISTRITO 101", "zona": "Zona 5422", "libre1v": 16, "unidad1v": 14, "pdc1v": 12, "mas1v": 1, "apb1v": 11, "valido1v": 56, "emitido1v": 60, "gan1v": "LIBRE", "pct1v": 28.6, "part1v": 93.8, "pdc2v": 20, "libre2v": 36, "valido2v": 56, "emitido2v": 58, "gan2v": "LIBRE", "pct2v": 64.3, "part2v": 90.6, "creemos20": 0, "cc20": 0, "mas20": 0, "valido20": 0, "emitido20": 0, "gan20": "CREEMOS", "pct20": 0.0, "part20": 0.0, "perfil": "ADULTO", "sondeo": 5, "joven": 24, "adulto": 27, "mayor": 12, "pjoven": 38.1, "padulto": 42.9, "pmayor": 19.0}, {"recinto": "U.E. Mataralcito", "asiento": "Mataralcito", "mesas": 1, "hab": 53, "pct_total": 0.45, "lat": -18.54161, "lng": -63.96852, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 108", "zona": "Zona 5423", "libre1v": 3, "unidad1v": 9, "pdc1v": 2, "mas1v": 1, "apb1v": 19, "valido1v": 37, "emitido1v": 44, "gan1v": "APB-SUMATÉ", "pct1v": 51.4, "part1v": 97.8, "pdc2v": 15, "libre2v": 22, "valido2v": 37, "emitido2v": 40, "gan2v": "LIBRE", "pct2v": 59.5, "part2v": 88.9, "creemos20": 0, "cc20": 6, "mas20": 4, "valido20": 10, "emitido20": 15, "gan20": "CC", "pct20": 60.0, "part20": 93.8, "perfil": "MAYOR", "sondeo": 5, "joven": 7, "adulto": 14, "mayor": 32, "pjoven": 13.2, "padulto": 26.4, "pmayor": 60.4}, {"recinto": "Esc. Nucleo Tucumancillo", "asiento": "Tucumancillo", "mesas": 1, "hab": 46, "pct_total": 0.39, "lat": -18.37757, "lng": -64.16082, "prioridad": "BAJA", "ideologia": "CONSERVADOR", "distrito": "DISTRITO 102", "zona": "Zona 5424", "libre1v": 25, "unidad1v": 2, "pdc1v": 5, "mas1v": 2, "apb1v": 4, "valido1v": 40, "emitido1v": 41, "gan1v": "LIBRE", "pct1v": 62.5, "part1v": 82.0, "pdc2v": 12, "libre2v": 30, "valido2v": 42, "emitido2v": 44, "gan2v": "LIBRE", "pct2v": 71.4, "part2v": 88.0, "creemos20": 13, "cc20": 19, "mas20": 8, "valido20": 43, "emitido20": 46, "gan20": "CC", "pct20": 44.2, "part20": 76.7, "perfil": "MAYOR", "sondeo": 5, "joven": 3, "adulto": 18, "mayor": 25, "pjoven": 6.5, "padulto": 39.1, "pmayor": 54.3}, {"recinto": "Esc. Temporal", "asiento": "Temporal", "mesas": 1, "hab": 29, "pct_total": 0.24, "lat": -18.63599, "lng": -64.07638, "prioridad": "BAJA", "ideologia": "CENTRO", "distrito": "DISTRITO 109", "zona": "Zona 5431", "libre1v": 5, "unidad1v": 11, "pdc1v": 0, "mas1v": 0, "apb1v": 7, "valido1v": 24, "emitido1v": 24, "gan1v": "UNIDAD", "pct1v": 45.8, "part1v": 88.9, "pdc2v": 5, "libre2v": 18, "valido2v": 23, "emitido2v": 23, "gan2v": "LIBRE", "pct2v": 78.3, "part2v": 85.2, "creemos20": 8, "cc20": 10, "mas20": 5, "valido20": 24, "emitido20": 27, "gan20": "CC", "pct20": 41.7, "part20": 93.1, "perfil": "MAYOR", "sondeo": 5, "joven": 0, "adulto": 14, "mayor": 15, "pjoven": 0.0, "padulto": 48.3, "pmayor": 51.7}];
+
+const PC = {ALTA:'#e05252',MEDIA:'#e07c3a',BAJA:'#4caf7d'};
+const IC = {CONSERVADOR:'#4a90d9',DERECHA:'#6699cc',CENTRO:'#e07c3a','EXTREMA IZQUIERDA':'#e05252'};
+const PTC = {LIBRE:'#3a9bd5',UNIDAD:'#f0c040',PDC:'#4caf7d','MAS-IPSP':'#e05252','APB-SUMATÉ':'#9b6dd9',CREEMOS:'#e07c3a',CC:'#4a90d9'};
+
+// ── MAP INIT ───────────────────────────────────────────────────────────
+const map = L.map('map',{zoomControl:false}).setView([-18.62,-64.05],9);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  attribution:'© OpenStreetMap © CARTO',maxZoom:19
+}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+// ── MARKERS ────────────────────────────────────────────────────────────
+function radius(h){return h>=2000?22:h>=1000?18:h>=500?14:h>=200?10:h>=100?7:5}
+
+let markerObjs=[];
+DATA.forEach((d,i)=>{
+  const m=L.circleMarker([d.lat,d.lng],{
+    radius:radius(d.hab),fillColor:PC[d.prioridad],
+    color:'#0b0d12',weight:2,fillOpacity:.85
+  }).addTo(map);
+  m.bindTooltip(d.recinto.length>30?d.recinto.slice(0,28)+'…':d.recinto,{permanent:false,direction:'top'});
+  m.on('click',()=>openDetail(i));
+  markerObjs.push({m,d,i});
+});
+
+// ── FILTER LOGIC ───────────────────────────────────────────────────────
+let activeFilter='all';
+document.querySelectorAll('.fbt').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.fbt').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    activeFilter=btn.dataset.f;
+    applyFilters();
+  });
+});
+
+function matches(d){
+  if(activeFilter==='all') return true;
+  return d.prioridad===activeFilter||d.ideologia===activeFilter;
+}
+function applyFilters(q=''){
+  markerObjs.forEach(({m,d})=>{
+    const vis=matches(d)&&matchQ(d,q);
+    vis?(map.hasLayer(m)||map.addLayer(m)):(map.hasLayer(m)&&map.removeLayer(m));
+  });
+}
+
+// ── SEARCH ────────────────────────────────────────────────────────────
+const inp=document.getElementById('search-input');
+const clr=document.getElementById('search-clear');
+const res=document.getElementById('search-results');
+let focusedIdx=-1;
+
+function matchQ(d,q){
+  if(!q) return true;
+  const s=(d.recinto+' '+d.asiento+' '+d.ideologia+' '+d.distrito+' '+d.zona).toLowerCase();
+  return s.includes(q.toLowerCase());
+}
+
+function highlight(text,q){
+  if(!q) return text;
+  const i=text.toLowerCase().indexOf(q.toLowerCase());
+  if(i<0) return text;
+  return text.slice(0,i)+'<mark style="background:rgba(240,192,64,.35);color:var(--white);border-radius:2px">'+text.slice(i,i+q.length)+'</mark>'+text.slice(i+q.length);
+}
+
+function renderResults(q){
+  if(!q){res.style.display='none';focusedIdx=-1;return}
+  const hits=DATA.map((d,i)=>({d,i})).filter(({d})=>matchQ(d,q));
+  if(!hits.length){
+    res.innerHTML='<div class="sr-empty">Sin resultados para "'+q+'"</div>';
+    res.style.display='block';return;
+  }
+  res.innerHTML=hits.slice(0,8).map(({d,i},ri)=>`
+    <div class="sr-item" data-idx="${i}" data-ri="${ri}">
+      <div class="sr-dot" style="background:${PC[d.prioridad]}"></div>
+      <div class="sr-info">
+        <div class="sr-name">${highlight(d.recinto,q)}</div>
+        <div class="sr-sub">${highlight(d.asiento,q)} · ${d.mesas} mesa${d.mesas>1?'s':''} · ${d.ideologia}</div>
+      </div>
+      <div class="sr-hab">${d.hab.toLocaleString()}</div>
+    </div>`).join('');
+  res.style.display='block';
+  res.querySelectorAll('.sr-item').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const idx=+el.dataset.idx;
+      closeSearch();
+      map.setView([DATA[idx].lat,DATA[idx].lng],14,{animate:true});
+      setTimeout(()=>openDetail(idx),300);
+    });
+  });
+  focusedIdx=-1;
+}
+
+inp.addEventListener('input',()=>{
+  const q=inp.value.trim();
+  clr.style.display=q?'block':'none';
+  renderResults(q);
+  applyFilters(q);
+});
+
+inp.addEventListener('keydown',e=>{
+  const items=res.querySelectorAll('.sr-item');
+  if(e.key==='ArrowDown'){e.preventDefault();focusedIdx=Math.min(focusedIdx+1,items.length-1);items.forEach((el,i)=>el.classList.toggle('focused',i===focusedIdx))}
+  else if(e.key==='ArrowUp'){e.preventDefault();focusedIdx=Math.max(focusedIdx-1,0);items.forEach((el,i)=>el.classList.toggle('focused',i===focusedIdx))}
+  else if(e.key==='Enter'&&focusedIdx>=0){items[focusedIdx].click()}
+  else if(e.key==='Escape'){closeSearch()}
+});
+
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#search-box')) closeSearch();
+});
+
+function closeSearch(){
+  res.style.display='none';
+  inp.blur();
+  focusedIdx=-1;
+}
+function clearSearch(){
+  inp.value='';clr.style.display='none';
+  res.style.display='none';applyFilters();
+}
+clr.addEventListener('click',clearSearch);
+
+// ── DETAIL CONTENT BUILDER ────────────────────────────────────────────
+function buildContent(d){
+  const pc=PC[d.prioridad], ic=IC[d.ideologia]||'#777';
+  const perfC={JOVEN:'#e07c3a',ADULTO:'#4caf7d',MAYOR:'#4a90d9'}[d.perfil]||'#777';
+  const maxAge=Math.max(d.joven,d.adulto,d.mayor)||1;
+
+  function histPanel(parties, valid, emitted, part, winP, winPct, ganador, suffix){
+    if(!valid&&!emitted) return `<div style="font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;padding:8px 0">Sin datos disponibles</div>`;
+    const maxV=Math.max(...parties.map(p=>p[1]));
+    return `
+      ${parties.filter(p=>p[1]>0).map(([name,votes])=>`
+        <div class="party-row">
+          <div class="party-meta">
+            <span class="party-name" style="color:${PTC[name]||'#aaa'}">${name}</span>
+            <span class="party-votes">${votes.toLocaleString()} votos${name===ganador?' ✓':''}</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:${maxV>0?Math.round(votes/maxV*100):0}%;background:${PTC[name]||'#aaa'}"></div></div>
+        </div>`).join('')}
+      <div class="stat-row">
+        <span>Ganador: <span style="color:${PTC[ganador]||'#aaa'};font-weight:700">${ganador} ${winPct>0?winPct+'%':''}</span></span>
+        <span>Participación: <span>${part>0?part+'%':'N/D'}</span></span>
+      </div>
+      <div class="stat-row" style="border:none;padding-top:4px">
+        <span>V. válidos: <span>${valid.toLocaleString()}</span></span>
+        <span>Emitidos: <span>${emitted.toLocaleString()}</span></span>
+      </div>`;
+  }
+
+  return `
+    <div class="sec">
+      <div class="sec-title">Resumen del Recinto</div>
+      <div class="kv-grid">
+        <div class="kv"><div class="kv-k">Habilitados</div><div class="kv-v gold">${d.hab.toLocaleString()}</div></div>
+        <div class="kv"><div class="kv-k">% del Padrón</div><div class="kv-v">${d.pct_total}%</div></div>
+        <div class="kv"><div class="kv-k">Mesas</div><div class="kv-v">${d.mesas}</div></div>
+        <div class="kv"><div class="kv-k">Sondeo (9 cand.)</div><div class="kv-v purple">${d.sondeo}</div></div>
+      </div>
+      <div class="badges" style="margin-top:10px">
+        <span class="badge" style="background:${pc}18;color:${pc};border-color:${pc}44">⬤ ${d.prioridad}</span>
+        <span class="badge" style="background:${ic}18;color:${ic};border-color:${ic}44">${d.ideologia}</span>
+        <span class="badge" style="background:${perfC}18;color:${perfC};border-color:${perfC}44">PERFIL ${d.perfil}</span>
+      </div>
+      <div style="margin-top:8px;font-size:9px;font-family:'IBM Plex Mono',monospace;color:var(--muted)">${d.distrito} · ${d.zona}</div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Perfil Etario</div>
+      <div class="age-wrap">
+        ${[['Joven 18–30',d.joven,d.pjoven,'#e07c3a'],['Adulto 31–50',d.adulto,d.padulto,'#4caf7d'],['Mayor 51+',d.mayor,d.pmayor,'#4a90d9']]
+          .map(([l,n,p,c])=>`
+          <div class="age-row-d">
+            <div class="age-lbl">${l}</div>
+            <div class="age-bar-outer">
+              <div class="age-bar-inner" style="width:${Math.round(n/maxAge*100)}%;background:${c}">${p>12?p+'%':''}</div>
+            </div>
+            <div class="age-num">${n}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Resultados Históricos</div>
+      <div class="tab-row">
+        <button class="tab active" onclick="switchTab(this,'t1v')">1ª Vuelta 2025</button>
+        <button class="tab" onclick="switchTab(this,'t2v')">2ª Vuelta 2025</button>
+        <button class="tab" onclick="switchTab(this,'t20')">Generales 2020</button>
+      </div>
+      <div id="t1v" class="hist-panel active">
+        ${histPanel([['LIBRE',d.libre1v],['UNIDAD',d.unidad1v],['PDC',d.pdc1v],['APB-SUMATÉ',d.apb1v],['MAS-IPSP',d.mas1v]],d.valido1v,d.emitido1v,d.part1v,d.gan1v,d.pct1v,d.gan1v,'1v')}
+      </div>
+      <div id="t2v" class="hist-panel">
+        ${histPanel([['LIBRE',d.libre2v],['PDC',d.pdc2v]],d.valido2v,d.emitido2v,d.part2v,d.gan2v,d.pct2v,d.gan2v,'2v')}
+      </div>
+      <div id="t20" class="hist-panel">
+        ${histPanel([['CREEMOS',d.creemos20],['CC',d.cc20],['MAS-IPSP',d.mas20]],d.valido20,d.emitido20,d.part20,d.gan20,d.pct20,d.gan20,'20')}
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">Ubicación</div>
+      <div class="kv-grid" style="margin-bottom:10px">
+        <div class="kv"><div class="kv-k">Latitud</div><div class="kv-v" style="font-size:12px">${d.lat}</div></div>
+        <div class="kv"><div class="kv-k">Longitud</div><div class="kv-v" style="font-size:12px">${d.lng}</div></div>
+      </div>
+      <a class="gps-btn" href="https://www.google.com/maps?q=${d.lat},${d.lng}" target="_blank">
+        📍 Abrir en Google Maps
+      </a>
+    </div>
+  `;
+}
+
+function switchTab(btn,id){
+  btn.closest('.sec').querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  btn.closest('.sec').querySelectorAll('.hist-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── OPEN / CLOSE DETAIL ───────────────────────────────────────────────
+let currentIdx=null;
+const isMobile=()=>window.innerWidth<700;
+
+function openDetail(idx){
+  currentIdx=idx;
+  const d=DATA[idx];
+  const content=buildContent(d);
+
+  // Highlight marker
+  markerObjs.forEach(({m,d:md})=>m.setStyle({weight:md===d?3.5:2,color:md===d?'#f0c040':'#0b0d12'}));
+
+  if(isMobile()){
+    document.getElementById('sheet-color').style.background=PC[d.prioridad];
+    document.getElementById('sheet-title').textContent=d.recinto;
+    document.getElementById('sheet-sub').textContent='📍 '+d.asiento+' · '+d.mesas+' mesa'+(d.mesas>1?'s':'');
+    document.getElementById('sheet-body').innerHTML=content;
+    document.getElementById('bottom-sheet').classList.add('open');
+  } else {
+    document.getElementById('sp-title').textContent=d.recinto;
+    document.getElementById('sp-sub').textContent='📍 '+d.asiento+' · '+d.mesas+' mesa'+(d.mesas>1?'s':'');
+    document.getElementById('sp-body').innerHTML=content;
+    document.getElementById('side-panel').classList.add('open');
+    // adjust legend
+    document.getElementById('legend').style.right='380px';
+  }
+}
+
+function closeDetail(){
+  currentIdx=null;
+  document.getElementById('bottom-sheet').classList.remove('open');
+  document.getElementById('side-panel').classList.remove('open');
+  document.getElementById('legend').style.right='';
+  markerObjs.forEach(({m})=>m.setStyle({weight:2,color:'#0b0d12'}));
+}
+
+// Touch swipe down to close sheet
+let touchStartY=0;
+document.getElementById('bottom-sheet').addEventListener('touchstart',e=>{touchStartY=e.touches[0].clientY},{passive:true});
+document.getElementById('bottom-sheet').addEventListener('touchmove',e=>{
+  if(e.touches[0].clientY-touchStartY>60&&document.getElementById('sheet-body').scrollTop===0) closeDetail();
+},{passive:true});
+
+// Resize handler
+window.addEventListener('resize',()=>{
+  if(!isMobile()){
+    document.getElementById('bottom-sheet').classList.remove('open');
+    if(currentIdx!==null) openDetail(currentIdx);
+  } else {
+    document.getElementById('side-panel').classList.remove('open');
+    if(currentIdx!==null) openDetail(currentIdx);
+  }
+});
+</script>
+</body>
+</html>

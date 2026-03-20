@@ -564,6 +564,7 @@ function openDetail(idx){
   currentIdx=idx;
   const d=DATA[idx];
   const content=buildContent(d);
+  if(isMobile()){const fn=document.getElementById('fusion-notice');if(fn)fn.style.display='none';}
 
   // Highlight marker
   markerObjs.forEach(({m,d:md})=>m.setStyle({weight:md===d?3.5:2,color:md===d?'#f0c040':'#0b0d12'}));
@@ -590,6 +591,7 @@ function closeDetail(){
   document.getElementById('side-panel').classList.remove('open');
   document.getElementById('legend').style.right='';
   markerObjs.forEach(({m})=>m.setStyle({weight:2,color:'#0b0d12'}));
+  if(isMobile()){const fn=document.getElementById('fusion-notice');if(fn)fn.style.display='flex';}
 }
 
 // Touch swipe down to close sheet
